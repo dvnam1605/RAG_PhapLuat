@@ -76,7 +76,3 @@ The system retrieves relevant legal document passages based on user queries and 
 - **Step Back**: Creates a more general version of the query to capture broader legal principles
 - **Decompose**: Breaks complex legal queries into focused sub-questions
 
-
-## Acknowledgements
-
-- [Add credits and acknowledgements here]
