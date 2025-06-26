@@ -43,8 +43,7 @@ The system retrieves relevant legal document passages based on user queries and 
 1. Clone this repository:
 
    ```
-   git clone https://github.com/your-username/legal-rag-system.git
-   cd legal-rag-system
+   [https://github.com/dvnam1605/RAG_PhapLuat.git]
    ```
 
 2. Install dependencies:
@@ -77,9 +76,6 @@ The system retrieves relevant legal document passages based on user queries and 
 - **Step Back**: Creates a more general version of the query to capture broader legal principles
 - **Decompose**: Breaks complex legal queries into focused sub-questions
 
-## License
-
-[Add your license information here]
 
 ## Acknowledgements
 
