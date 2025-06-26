@@ -43,7 +43,7 @@ The system retrieves relevant legal document passages based on user queries and 
 1. Clone this repository:
 
    ```
-   [https://github.com/dvnam1605/RAG_PhapLuat.git]
+   https://github.com/dvnam1605/RAG_PhapLuat.git
    ```
 
 2. Install dependencies:
