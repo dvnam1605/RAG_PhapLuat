@@ -1,0 +1,11 @@
+# Python
+__pycache__/
+.vscode
+.env
+
+model
+result.json
+# Jupyter Notebook
+transform_query.ipynb
+
+output_texts
