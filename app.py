@@ -105,7 +105,7 @@ def main():
     
     col1, col2 = st.columns([1, 5])
     with col1:
-        search_button = st.button("🔍 Tìm kiếm", type="primary", use_container_width=True)
+        search_button = st.button("🔍 Gửi", type="primary", use_container_width=True)
     
     # Process the query when the button is clicked
     if search_button and query:
