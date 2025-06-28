@@ -67,7 +67,7 @@ The system retrieves relevant legal document passages based on user queries and 
 
 1. Enter a legal question in Vietnamese in the text box
 2. Select a query transformation method (optional)
-3. Click "Tìm kiếm" to get an answer
+3. Click "Gửi" to get an answer
 4. Explore retrieved legal contexts in the expandable sections
 
 ## Query Transformation Methods
@@ -76,7 +76,3 @@ The system retrieves relevant legal document passages based on user queries and 
 - **Step Back**: Creates a more general version of the query to capture broader legal principles
 - **Decompose**: Breaks complex legal queries into focused sub-questions
 
-
-## Acknowledgements
-
-- [Add credits and acknowledgements here]
