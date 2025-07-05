@@ -5,7 +5,6 @@ from qabot import rag_with_query_transformation
 
 # Load environment variables
 load_dotenv()
-
 # Set page configuration
 st.set_page_config(
     page_title="Hệ thống RAG Pháp Luật",
