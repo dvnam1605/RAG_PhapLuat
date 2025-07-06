@@ -1,4 +1,3 @@
-# query_transformer.py
 
 import re
 from typing import List
@@ -7,115 +6,122 @@ from langchain_core.retrievers import BaseRetriever
 import google.generativeai as genai
 
 
-
-class QueryTransformer:
-    """Lớp chứa các phương thức để biến đổi truy vấn người dùng."""
-    def __init__(self, model_instance: genai.GenerativeModel, query_text: str):
-        self.model = model_instance
-        self.query = query_text
-
-    def rewrite_query(self) -> str:
-        """Viết lại và đa dạng hóa truy vấn."""
-        prompt = f"""Bạn là một Trợ lý AI pháp lý chuyên nghiệp, được huấn luyện để tối ưu hóa truy vấn tìm kiếm trên cơ sở dữ liệu của Thư viện Pháp luật. Nhiệm vụ của bạn là nhận một câu hỏi pháp lý từ người dùng và viết lại nó thành nhiều truy vấn tìm kiếm **tốt hơn, chi tiết và sắc bén hơn** để hệ thống RAG có thể tìm thấy các văn bản luật, nghị định, thông tư liên quan một cách chính xác nhất.
+def rewrite_to_general_query(model: genai.GenerativeModel, query: str) -> str:
+    """
+    Viết lại câu hỏi gốc thành một câu hỏi khác hợp lý và khái quát hơn,
+    tập trung vào bản chất pháp lý của vấn đề.
+    Trả về MỘT chuỗi câu hỏi.
+    """
+    prompt = f"""Bạn là một Trợ lý AI pháp lý chuyên nghiệp. Nhiệm vụ của bạn là nhận một câu hỏi pháp lý từ người dùng và **viết lại nó thành MỘT câu hỏi pháp lý khác, hợp lý và khái quát hơn**.
+Mục tiêu là tìm ra các văn bản luật, nghị định, thông tư nền tảng liên quan đến vấn đề gốc.
 
 **QUY TẮC:**
-1.  **KHÔNG TRẢ LỜI CÂU HỎI.** Chỉ tập trung vào việc tạo ra các truy vấn tìm kiếm.
-2.  **TẬP TRUNG VÀO TỪ KHÓA:** Chuyển câu hỏi dạng văn nói thành các cụm từ khóa pháp lý cốt lõi.
-3.  **ĐA DẠNG HÓA TRUY VẤN:** Tạo ra 3-4 biến thể của truy vấn.
+1.  **KHÔNG TRẢ LỜI CÂU HỎI.** Chỉ tập trung vào việc tạo ra câu hỏi mới.
+2.  **KHÁI QUÁT HÓA VÀ TẬP TRUNG VÀO CỐT LÕI:** Chuyển câu hỏi chi tiết thành câu hỏi về nguyên tắc, quy định chung, hoặc bản chất pháp lý.
+3.  **CHỈ MỘT CÂU HỎI.**
+4.  **SỬ DỤNG NGÔN NGỮ PHÁP LÝ CHÍNH XÁC.**
 
 ---
 **VÍ DỤ:**
-**Câu hỏi gốc:** "công ty nợ lương 2 tháng thì phạt thế nào?"
-**Truy vấn được tối ưu hóa:**
-- mức xử phạt doanh nghiệp chậm trả lương cho người lao động
-- quy định về thời hạn thanh toán tiền lương
-- trách nhiệm của người sử dụng lao động khi không trả lương đúng hạn
-- khiếu nại công ty nợ lương ở đâu
----
-**YÊU CẦU:**
-Bây giờ, hãy tối ưu hóa câu hỏi dưới đây.
+**Câu hỏi gốc:** "Công ty nợ lương 2 tháng thì phạt thế nào?"
+**Câu hỏi khái quát hơn:** "Quy định về trách nhiệm pháp lý của người sử dụng lao động đối với việc chậm trả lương cho người lao động là gì?"
 
-**Câu hỏi gốc:** "{self.query}"
-**Truy vấn được tối ưu hóa:**
-"""
-        response = self.model.generate_content(prompt, generation_config=genai.types.GenerationConfig(temperature=0.1))
-        return response.text.strip()
-    
-    def generate_step_back_query(self) -> str:
-        """Tạo truy vấn khái quát hóa (step-back)."""
-        prompt = f"""Bạn là một chuyên gia phân tích pháp lý. Nhiệm vụ của bạn là đọc một câu hỏi pháp lý **cụ thể** của người dùng và tạo ra một câu hỏi **khái quát hơn** (step-back).
-**MỤC ĐÍCH:** Câu hỏi này dùng để tìm các nguyên tắc pháp lý chung, định nghĩa, hoặc quy định khung làm nền tảng cho vấn đề cụ thể, giúp hệ thống RAG có thêm bối cảnh.
----
-**VÍ DỤ:**
 **Câu hỏi gốc:** "Tôi bị hàng xóm xây nhà lấn sang 10cm đất, tôi phải làm gì?"
-**Câu hỏi lùi một bước:** "Nguyên tắc pháp lý và phương thức giải quyết tranh chấp đất đai liên quan đến hành vi lấn chiếm ranh giới thửa đất là gì?"
+**Câu hỏi khái quát hơn:** "Nguyên tắc và trình tự giải quyết tranh chấp ranh giới đất đai giữa các cá nhân theo quy định pháp luật dân sự là gì?"
+
+**Câu hỏi gốc:** "Tôi muốn ly hôn đơn phương khi chồng tôi có hành vi bạo lực gia đình và đang trốn nợ, thủ tục cần những gì và tài sản chung là một ngôi nhà sẽ được phân chia ra sao?"
+**Câu hỏi khái quát hơn:** "Các căn cứ và thủ tục pháp lý cho ly hôn đơn phương, kèm theo nguyên tắc phân chia tài sản chung trong trường hợp có hành vi bạo lực gia đình và nợ xấu là gì?"
 ---
 **YÊU CẦU:**
-Tạo câu hỏi lùi một bước cho câu hỏi dưới đây.
+Bây giờ, hãy viết lại câu hỏi dưới đây thành MỘT câu hỏi khái quát hơn.
 
-**Câu hỏi gốc:** "{self.query}"
-**Câu hỏi lùi một bước:**"""
-        response = self.model.generate_content(prompt, generation_config=genai.types.GenerationConfig(temperature=0.1))
-        return response.text.strip()
-    
-    def decompose_query(self) -> List[str]:
-        """Phân rã câu hỏi phức tạp thành các câu hỏi con."""
-        prompt = f"""Bạn là một chuyên gia phân tích pháp lý. Nhiệm vụ của bạn là phân rã một câu hỏi pháp lý **phức tạp** thành nhiều câu hỏi con, **đơn giản và độc lập**.
-**QUY TẮC:** Mỗi câu hỏi con phải tập trung vào **MỘT** khía cạnh duy nhất và có thể trả lời độc lập.
+**Câu hỏi gốc:** "{query}"
+**Câu hỏi khái quát hơn:**
+"""
+    response = model.generate_content(prompt, generation_config=genai.types.GenerationConfig(temperature=0.2)) # Có thể tăng temp lên 0.2 để có câu hỏi đa dạng hơn
+    return response.text.strip()
+
+
+def decompose_query(model: genai.GenerativeModel, query: str) -> List[str]:
+    """Phân rã câu hỏi phức tạp thành các câu hỏi con (giữ nguyên logic cũ)."""
+    prompt = f"""Bạn là một chuyên gia phân tích pháp lý. Nhiệm vụ của bạn là phân rã một câu hỏi pháp lý **phức tạp** thành nhiều câu hỏi con, **đơn giản và độc lập**.
+**QUY TẮC:** Mỗi câu hỏi con phải tập trung vào **MỘT** khía cạnh duy nhất và có thể trả lời độc lập. Mỗi câu hỏi con trên một dòng.
 ---
 **VÍ DỤ:**
 **Câu hỏi gốc:** "Tôi muốn ly hôn đơn phương khi chồng tôi có hành vi bạo lực gia đình và đang trốn nợ, thủ tục cần những gì và tài sản chung là một ngôi nhà sẽ được phân chia ra sao?"
 **Câu hỏi con được phân rã:**
-1. Căn cứ pháp lý để ly hôn đơn phương khi có hành vi bạo lực gia đình là gì?
-2. Thủ tục và hồ sơ cần thiết để tiến hành ly hôn đơn phương tại Tòa án?
-3. Nguyên tắc phân chia tài sản chung là nhà ở khi ly hôn được quy định như thế nào?
-4. Việc một bên vợ hoặc chồng có nợ riêng ảnh hưởng thế nào đến việc phân chia tài sản chung khi ly hôn?
+Căn cứ pháp lý để ly hôn đơn phương khi có hành vi bạo lực gia đình là gì?
+Thủ tục và hồ sơ cần thiết để tiến hành ly hôn đơn phương tại Tòa án?
+Nguyên tắc phân chia tài sản chung là nhà ở khi ly hôn được quy định như thế nào?
+Việc một bên vợ hoặc chồng có nợ riêng ảnh hưởng thế nào đến việc phân chia tài sản chung khi ly hôn?
 ---
 **YÊU CẦU:**
 Phân rã câu hỏi phức tạp dưới đây.
 
-**Câu hỏi gốc:** "{self.query}"
+**Câu hỏi gốc:** "{query}"
 **Câu hỏi con được phân rã:**
 """
-        response = self.model.generate_content(prompt, generation_config=genai.types.GenerationConfig(temperature=0.2))
-        content = response.text.strip()
-        subqueries = [re.sub(r'^\s*\d+\.\s*', '', line).strip() for line in content.split('\n') if re.match(r'^\s*\d+\.', line)]
-        return subqueries if subqueries else [self.query]
+    response = model.generate_content(prompt, generation_config=genai.types.GenerationConfig(temperature=0.2))
+    sub_queries = response.text.strip().split('\n')
+    cleaned_queries = [re.sub(r'^\s*-\s*|\s*\d+\.\s*', '', q).strip() for q in sub_queries if q.strip()]
+    return cleaned_queries if cleaned_queries else [query]
+
+
+# --- HÀM HELPER VÀ HÀM CHÍNH ---
+
+def _search_multiple_queries(
+    queries: List[str],
+    retriever: BaseRetriever,
+    k_per_query: int = 3,
+) -> List[Document]:
+    """
+    Hàm helper để thực hiện tìm kiếm cho một danh sách các truy vấn,
+    gộp và loại bỏ các kết quả trùng lặp.
+    """
+    all_results = []
+    print("---Đang thực hiện tìm kiếm cho các truy vấn con---")
+    for sub_q in queries:
+        print(f"  -> Đang tìm kiếm cho: '{sub_q}'")
+        try:
+            # Đảm bảo retriever hỗ trợ tham số 'k' trong invoke
+            all_results.extend(retriever.invoke(sub_q, k=k_per_query))
+        except Exception as e:
+            print(f"  Lỗi khi tìm kiếm cho '{sub_q}': {e}")
+            # Tiếp tục với truy vấn tiếp theo nếu có lỗi
+            continue
+
+    unique_docs = list({(doc.page_content, doc.metadata): doc for doc in all_results}.values()) # Sử dụng metadata để nhận diện document duy nhất tốt hơn
+    print(f"---Tìm thấy tổng cộng {len(all_results)} tài liệu, sau khi lọc còn {len(unique_docs)} tài liệu duy nhất.---")
+    return unique_docs
+
 
 def transformed_search(
-    query: str, 
-    transformation_type: str, 
-    model: genai.GenerativeModel, 
+    query: str,
+    transformation_type: str,
+    model: genai.GenerativeModel,
     retriever: BaseRetriever,
-    top_k: int = 5
 ) -> List[Document]:
     """
     Thực hiện tìm kiếm sử dụng truy vấn đã được biến đổi.
-    Hàm này nhận model và retriever làm tham số (Dependency Injection).
     """
-    query_transformer = QueryTransformer(model, query)
-    
     if transformation_type == "rewrite":
-        transformed_query = query_transformer.rewrite_query()
-        print(f"🔎 Truy vấn đã viết lại:\n---\n{transformed_query}\n---")
+        print("🔎 Bắt đầu biến đổi truy vấn: REWRITE (Thành 1 câu khái quát)")
+        transformed_query = rewrite_to_general_query(model, query)
+        print(f"  -> Câu hỏi khái quát hơn: {transformed_query}")
+        # Tìm kiếm chỉ với MỘT câu hỏi đã được viết lại
         return retriever.invoke(transformed_query)
-        
+
     elif transformation_type == "step_back":
-        transformed_query = query_transformer.generate_step_back_query()
-        print(f"🔎 Truy vấn 'lùi một bước': {transformed_query}")
+        print("🔎 Bắt đầu biến đổi truy vấn: STEP_BACK")
+        transformed_query = decompose_query(model, query) # <-- Sửa lỗi: dùng đúng hàm
+        print(f"  -> Truy vấn 'lùi một bước': {transformed_query}")
         return retriever.invoke(transformed_query)
-        
+
     elif transformation_type == "decompose":
-        sub_queries = query_transformer.decompose_query()
-        print("🔎 Truy vấn đã phân rã:")
-        for i, sub_q in enumerate(sub_queries, 1):
-            print(f"  {i}. {sub_q}")
-        
-        all_results = [doc for sub_q in sub_queries for doc in retriever.invoke(sub_q)]
-        
-        # Lọc các tài liệu duy nhất và lấy top_k
-        unique_docs = list({doc.page_content: doc for doc in all_results}.values())
-        return unique_docs[:top_k]
-    
+        print("🔎 Bắt đầu biến đổi truy vấn: DECOMPOSE")
+        queries = decompose_query(model, query)
+        return _search_multiple_queries(queries, retriever)
+
     # Nếu không có transformation_type hợp lệ, thực hiện tìm kiếm thông thường
+    print("🔎 Thực hiện tìm kiếm thông thường (không biến đổi)")
     return retriever.invoke(query)
