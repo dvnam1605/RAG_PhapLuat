@@ -21,42 +21,49 @@ class TvplSpiderFinal(scrapy.Spider):
     allowed_domains = ["thuvienphapluat.vn"]
 
     custom_settings = {
-        # Cấu hình cốt lõi để Playwright hoạt động
-        'TWISTED_REACTOR': 'twisted.internet.asyncioreactor.AsyncioSelectorReactor',
-        'DOWNLOAD_HANDLERS': {
-            "http": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
-            "https": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
-        },
-        # Giả mạo User-Agent để tránh bị chặn (lỗi 403 Forbidden)
-        'USER_AGENT': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+    # Playwright cấu hình
+    'TWISTED_REACTOR': 'twisted.internet.asyncioreactor.AsyncioSelectorReactor',
+    'DOWNLOAD_HANDLERS': {
+        "http": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
+        "https": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
+    },
 
-        # Cài đặt tối ưu và kiểm soát hành vi crawl
-        'ROBOTSTXT_OBEY': False, # Bỏ qua robots.txt để tránh bị chặn
-        'DOWNLOAD_DELAY': 1,     # Độ trễ giữa các request để giảm tải cho server
-        'CONCURRENT_REQUESTS_PER_DOMAIN': 4, # Giới hạn số request đồng thời để ổn định hơn
-        'RETRY_TIMES': 3,        # Thử lại 3 lần nếu gặp lỗi
-        'LOG_LEVEL': 'INFO',     # Mức log, đổi thành 'DEBUG' để xem chi tiết khi gỡ lỗi
+    # Giả lập người dùng thật
+    'USER_AGENT': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
 
-        ## FIX 1: Tăng thời gian chờ điều hướng mặc định từ 30s lên 60s.
-        ## Điều này giải quyết trực tiếp lỗi TimeoutError cho các trang tải chậm.
-        'PLAYWRIGHT_DEFAULT_NAVIGATION_TIMEOUT': 60000, # 60,000 milliseconds = 60 seconds
-        
+    # Giảm tốc crawl để không bị nghi là bot
+    'ROBOTSTXT_OBEY': False,
+    'DOWNLOAD_DELAY': 6,  # mỗi request cách nhau ít nhất 6 giây
+    'CONCURRENT_REQUESTS_PER_DOMAIN': 4,  # chỉ chạy từng request một
+    'AUTOTHROTTLE_ENABLED': True,  # tự động điều chỉnh tốc độ khi server quá tải
+    'AUTOTHROTTLE_START_DELAY': 5,
+    'AUTOTHROTTLE_MAX_DELAY': 30,
+    'RETRY_TIMES': 3,  # thử lại tối đa 2 lần nếu bị lỗi
 
-        # Cấu hình Playwright
-        'PLAYWRIGHT_LAUNCH_OPTIONS': {
-            'headless': True  # Chạy ở chế độ ẩn, đổi thành False để xem trình duyệt hoạt động
-        },
-        # Tự động hủy các request không cần thiết (ảnh, css) để tăng tốc
-        'PLAYWRIGHT_ABORT_REQUEST': lambda req: req.resource_type in ("image", "stylesheet", "font"),
-    }
+    # Mở rộng thời gian chờ để xử lý trang chậm
+    'PLAYWRIGHT_DEFAULT_NAVIGATION_TIMEOUT': 60000,
+
+    # Playwright chạy headless nhưng có thể bật visible để debug
+    'PLAYWRIGHT_LAUNCH_OPTIONS': {
+        'headless': True,
+        'timeout': 120 * 1000,  # 2 phút
+    },
+
+    # Hủy các request không cần thiết
+    'PLAYWRIGHT_ABORT_REQUEST': lambda req: req.resource_type in ("image", "stylesheet", "font"),
+
+    # Bật log chi tiết để theo dõi
+    'LOG_LEVEL': 'INFO',
+}
+
 
     # URL khởi đầu, có thể thay đổi trang bắt đầu ở đây
     start_urls = [
-        "https://thuvienphapluat.vn/page/tim-van-ban.aspx?keyword=&area=1&match=True&type=0&status=0&signer=&sort=1&lan=0&scan=0&org=0&fields=&page=120"
+        "https://thuvienphapluat.vn/page/tim-van-ban.aspx?keyword=&area=1&match=True&type=0&status=0&signer=&sort=1&lan=0&scan=0&org=0&fields=&page=18"
     ]
 
     # Giới hạn số trang kết quả tìm kiếm sẽ crawl, 0 là không giới hạn
-    MAX_SEARCH_RESULT_PAGES = 1000
+    MAX_SEARCH_RESULT_PAGES = 10000
     search_pages_crawled_count = 0
 
     def __init__(self, *args, **kwargs):

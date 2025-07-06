@@ -1,147 +1,153 @@
-import streamlit as st
-import os
-from dotenv import load_dotenv
-from qabot import rag_with_query_transformation
+# streamlit_app.py (phiên bản đã sửa lỗi và cập nhật)
 
-# Load environment variables
+import streamlit as st
+from dotenv import load_dotenv
+
+# Import hàm RAG từ file qabot.py đã nâng cấp lên LangGraph
+try:
+    from qabot import rag_pipeline 
+except ImportError as e:
+    st.error(f"Lỗi: Không tìm thấy hàm `rag_pipeline` trong file `qabot.py`. Lỗi: {e}")
+    st.stop()
+
+# Load biến môi trường
 load_dotenv()
 
-# Set page configuration
+# --- CẤU HÌNH TRANG ---
 st.set_page_config(
-    page_title="Hệ thống RAG Pháp Luật",
+    page_title="Trợ lý Pháp luật AI",
     page_icon="⚖️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for better appearance
+# --- CSS LÀM ĐẸP GIAO DIỆN (GIỮ NGUYÊN) ---
 st.markdown("""
-    <style>
-    .main {
-        background-color: #f8f9fa;
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+    html, body, [class*="css"] {
+        font-family: 'Inter', sans-serif;
     }
     .stApp {
-        max-width: 1200px;
-        margin: 0 auto;
+        background: linear-gradient(to bottom right, #f2f6fc, #e8ecf4);
     }
-    .result-container {
-        background-color: white;
-        padding: 20px;
-        border-radius: 10px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        margin-bottom: 20px;
+    [data-testid="stSidebar"] {
+        background-color: #ffffff;
+        box-shadow: 2px 0 5px rgba(0,0,0,0.05);
     }
-    .context-container {
-        max-height: 400px;
-        overflow-y: auto;
-        background-color: #f1f3f4;
-        padding: 15px;
-        border-radius: 8px;
-        margin-top: 10px;
-        font-size: 0.9em;
+    .stButton>button {
+        border-radius: 25px; background-color: #ffffff; color: #007bff;
+        border: 1px solid #007bff; padding: 0.4em 1.2em; font-weight: 600; transition: 0.3s;
     }
-    .query-transform-info {
-        background-color: #e8f4f8;
-        padding: 10px;
-        border-radius: 8px;
-        margin-top: 10px;
+    .stButton>button:hover {
+        background-color: #007bff; color: white;
     }
-    h1 {
-        color: #0d47a1;
+</style>
+""", unsafe_allow_html=True)
+
+
+# --- SIDEBAR ---
+with st.sidebar:
+    # <--- SỬA LỖI Ở ĐÂY: Thay thế use_column_width bằng use_container_width
+    st.image("https://thuvienphapluat.vn/images/logo-tvpl.svg", use_container_width=True)
+    
+    st.title("Trợ lý Pháp luật AI")
+    st.markdown("_(Phiên bản LangGraph)_")
+    st.markdown("---")
+    
+    st.header("⚙️ Tùy chọn truy xuất")
+
+    # <--- THÊM/SỬA Ở ĐÂY: Thêm tùy chọn "Không biến đổi" vào map
+    transformation_map = {
+        "Không biến đổi (Regular)": None,
+        "Viết lại & Đa dạng hóa (Rewrite)": "rewrite",
+        "Khái quát hóa (Step Back)": "step_back",
+        "Phân rã (Decompose)": "decompose",
     }
-    h3 {
-        color: #1976d2;
-    }
-    </style>
+
+    # Widget radio để người dùng chọn
+    transformation_option = st.radio(
+        "Phương pháp biến đổi (áp dụng cho tra cứu pháp luật):",
+        options=transformation_map.keys(),
+        index=0, # <--- SỬA: Đặt "Không biến đổi" làm mặc định
+        help="Lựa chọn cách hệ thống xử lý câu hỏi của bạn trước khi tìm kiếm."
+    )
+
+    # Lưu lựa chọn vào session state
+    st.session_state.transformation_type = transformation_map[transformation_option]
+
+    st.markdown("---")
+    if st.button("🗑️ Xóa cuộc trò chuyện"):
+        # Reset lại cả tin nhắn hiển thị và lịch sử cho LangGraph
+        st.session_state.messages = []
+        st.session_state.history = []
+        st.rerun()
+
+    st.markdown("---")
+    st.info("Hệ thống tự động định tuyến câu hỏi để tra cứu nội bộ hoặc tìm kiếm trên Internet.")
+
+
+# --- KHU VỰC CHAT CHÍNH ---
+
+# Khởi tạo session state để lưu tin nhắn hiển thị và lịch sử cho LangGraph
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "history" not in st.session_state:
+    st.session_state.history = []
+
+# Hiển thị lời chào nếu chưa có tin nhắn nào
+if not st.session_state.messages:
+    st.markdown("""
+        <div style='text-align: center; margin-top: 50px;'>
+            <h2 style='color: #2c3e50;'>🤖 Chào mừng bạn đến với Trợ lý Pháp luật AI</h2>
+            <p style='font-size: 18px; color: #555;'>Hãy nhập câu hỏi của bạn bên dưới, ví dụ:</p>
+            <p><i>"Trách nhiệm của UBND cấp xã trong quản lý chợ?"</i> hoặc <i>"Giá xăng hôm nay?"</i></p>
+        </div>
     """, unsafe_allow_html=True)
 
-def main():
-    st.title("⚖️ Hệ thống RAG Pháp Luật")
-    
-    # Sidebar for app configuration
-    with st.sidebar:
-        st.header("Cấu hình hệ thống")
-        
-        # Choose query transformation type
-        st.subheader("Chọn phương pháp biến đổi truy vấn")
-        transformation_option = st.radio(
-            "Phương pháp biến đổi:",
-            ["Không biến đổi", "Viết lại truy vấn (Rewrite)", "Mở rộng truy vấn (Step Back)", "Phân tách truy vấn (Decompose)"],
-            index=0
-        )
-        
-        # Map radio button options to transformation types
-        transformation_map = {
-            "Không biến đổi": None,
-            "Viết lại truy vấn (Rewrite)": "rewrite",
-            "Mở rộng truy vấn (Step Back)": "step_back",
-            "Phân tách truy vấn (Decompose)": "decompose"
-        }
-        
-        transformation_type = transformation_map[transformation_option]
-        
-        # Information about each transformation method
-        if transformation_type:
-            st.info(
-                {
-                    "rewrite": "Viết lại truy vấn để làm rõ và cụ thể hóa nội dung pháp lý.",
-                    "step_back": "Mở rộng truy vấn để bao quát các khía cạnh pháp lý liên quan.",
-                    "decompose": "Phân tách truy vấn phức tạp thành các truy vấn đơn giản hơn."
-                }[transformation_type]
-            )
-        
-        st.divider()
-        st.markdown("### Giới thiệu")
-        st.markdown("""
-        Hệ thống truy xuất thông tin pháp lý sử dụng công nghệ RAG (Retrieval-Augmented Generation) 
-        giúp tìm kiếm và trả lời các câu hỏi dựa trên văn bản pháp luật Việt Nam.
-        """)
-    
-    # Main content area
-    st.header("Tra cứu thông tin pháp luật")
-    
-    # Query input
-    query = st.text_area("Nhập câu hỏi pháp lý của bạn:", height=100)
-    
-    col1, col2 = st.columns([1, 5])
-    with col1:
-        search_button = st.button("🔍 Gửi", type="primary", use_container_width=True)
-    
-    # Process the query when the button is clicked
-    if search_button and query:
-        with st.spinner('Đang xử lý truy vấn...'):
-            try:
-                # Call the RAG function with the query and transformation type
-                result = rag_with_query_transformation(query, transformation_type)
-                
-                # Display the result
-                st.markdown("### Kết quả")
-                
-                # Output original and transformed queries if applicable
-                if transformation_type:
-                    with st.expander("Thông tin về biến đổi truy vấn", expanded=False):
-                        st.markdown(f"**Truy vấn gốc:** {result['Câu hỏi gốc']}")
-                        st.markdown(f"**Phương pháp biến đổi:** {transformation_option}")
-                
-                # Display the answer
-                st.markdown("### Trả lời")
-                st.markdown(f"{result['Trả lời']}")
-                
-                # Show the context in an expander
-                with st.expander("Xem các văn bản pháp luật liên quan", expanded=False):
-                    st.markdown("### Ngữ cảnh từ văn bản pháp luật")
-                    st.markdown(f"<div class='context-container'>{result['Ngữ cảnh'].replace('\n', '<br>')}</div>", 
-                                unsafe_allow_html=True)
-                
-            except Exception as e:
-                st.error(f"Đã xảy ra lỗi: {str(e)}")
-    elif search_button:
-        st.warning("Vui lòng nhập câu hỏi để tìm kiếm.")
-    
-    # Footer
-    st.markdown("---")
-    st.markdown("<div style='text-align: center; color: gray; font-size: 0.8em;'>Hệ thống RAG Pháp Luật © 2025</div>", 
-                unsafe_allow_html=True)
+# Hiển thị lịch sử chat
+for message in st.session_state.messages:
+    with st.chat_message(message["role"], avatar=message.get("avatar")):
+        st.markdown(message["content"])
+        if "details" in message:
+            with st.expander("🔍 Xem chi tiết quá trình xử lý", expanded=False):
+                st.info(f"**Phương pháp được chọn tự động:** {message['details']}")
 
-if __name__ == "__main__":
-    main()
+# Xử lý input mới từ người dùng
+if prompt := st.chat_input("💬 Nhập câu hỏi của bạn tại đây..."):
+    # Thêm tin nhắn của người dùng vào danh sách hiển thị
+    st.session_state.messages.append({"role": "user", "content": prompt, "avatar": "🧑‍💻"})
+    with st.chat_message("user", avatar="🧑‍💻"):
+        st.markdown(prompt)
+
+    # Hiển thị câu trả lời của bot
+    with st.chat_message("assistant", avatar="⚖️"):
+        with st.spinner("⚖️ Trợ lý AI đang phân tích và tìm kiếm..."):
+            try:
+                # GỌI HÀM PIPELINE CỦA LANGGRAPH
+                result = rag_pipeline(
+                    prompt, 
+                    st.session_state.history, 
+                    st.session_state.transformation_type
+                )
+                
+                response_text = result.get("Trả lời", "Xin lỗi, đã có lỗi xảy ra.")
+                method_used = result.get('Phương pháp', 'Không rõ')
+
+                st.markdown(response_text)
+                
+                # Thêm tin nhắn của bot vào danh sách hiển thị
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": response_text,
+                    "avatar": "⚖️",
+                    "details": method_used
+                })
+                
+                # CẬP NHẬT LỊCH SỬ CHO LANGGRAPH
+                st.session_state.history.append((prompt, response_text))
+
+            except Exception as e:
+                error_message = f"❌ Đã xảy ra lỗi nghiêm trọng: {str(e)}"
+                st.error(error_message)
+                st.session_state.messages.append({"role": "assistant", "content": error_message, "avatar": "⚖️"})
