@@ -11,6 +11,7 @@ from langchain_community.vectorstores import FAISS
 from duckduckgo_search import DDGS
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
+from query_transform import transformed_search
 
 load_dotenv()
 API_KEY = os.getenv("API_KEY")
@@ -41,87 +42,6 @@ except Exception as e:
     print(f"   Lỗi chi tiết: {e}")
     retriever = None # Đặt retriever là None nếu không tải được
 
-
-# ==============================================================================
-# PHẦN 1: LOGIC BIẾN ĐỔI TRUY VẤN (QUERY TRANSFORMATION)
-# ==============================================================================
-
-def rewrite_to_general_query(model: genai.GenerativeModel, query: str) -> str:
-    """Viết lại câu hỏi gốc thành MỘT câu hỏi khác hợp lý và khái quát hơn."""
-    prompt = f"""Bạn là một Trợ lý AI pháp lý chuyên nghiệp. Nhiệm vụ của bạn là nhận một câu hỏi pháp lý từ người dùng và **viết lại nó thành MỘT câu hỏi pháp lý khác, hợp lý và khái quát hơn**.
-Mục tiêu là tìm ra các văn bản luật, nghị định, thông tư nền tảng liên quan đến vấn đề gốc.
-
-**QUY TẮC:**
-1.  **KHÔNG TRẢ LỜI CÂU HỎI.** Chỉ tập trung vào việc tạo ra câu hỏi mới.
-2.  **KHÁI QUÁT HÓA:** Chuyển câu hỏi chi tiết thành câu hỏi về nguyên tắc, quy định chung.
-3.  **CHỈ MỘT CÂU HỎI.**
-
----
-**VÍ DỤ:**
-**Câu hỏi gốc:** "Công ty nợ lương 2 tháng thì phạt thế nào?"
-**Câu hỏi khái quát hơn:** "Quy định về trách nhiệm pháp lý của người sử dụng lao động đối với việc chậm trả lương cho người lao động là gì?"
----
-**YÊU CẦU:** Viết lại câu hỏi dưới đây thành MỘT câu hỏi khái quát hơn.
-**Câu hỏi gốc:** "{query}"
-**Câu hỏi khái quát hơn:**
-"""
-    response = model.generate_content(prompt, generation_config=genai.types.GenerationConfig(temperature=0.2))
-    return response.text.strip()
-
-def decompose_query(model: genai.GenerativeModel, query: str) -> List[str]:
-    """Phân rã câu hỏi phức tạp thành các câu hỏi con."""
-    prompt = f"""Bạn là một chuyên gia phân tích pháp lý. Nhiệm vụ của bạn là phân rã một câu hỏi pháp lý **phức tạp** thành nhiều câu hỏi con, **đơn giản và độc lập**.
-**QUY TẮC:** Mỗi câu hỏi con phải tập trung vào **MỘT** khía cạnh duy nhất. Mỗi câu hỏi con trên một dòng.
----
-**VÍ DỤ:**
-**Câu hỏi gốc:** "Tôi muốn ly hôn đơn phương khi chồng tôi có hành vi bạo lực gia đình và đang trốn nợ, thủ tục cần những gì và tài sản chung là một ngôi nhà sẽ được phân chia ra sao?"
-**Câu hỏi con được phân rã:**
-Căn cứ pháp lý để ly hôn đơn phương khi có hành vi bạo lực gia đình là gì?
-Thủ tục và hồ sơ cần thiết để tiến hành ly hôn đơn phương tại Tòa án?
-Nguyên tắc phân chia tài sản chung là nhà ở khi ly hôn được quy định như thế nào?
----
-**YÊU CẦU:** Phân rã câu hỏi phức tạp dưới đây.
-**Câu hỏi gốc:** "{query}"
-**Câu hỏi con được phân rã:**
-"""
-    response = model.generate_content(prompt, generation_config=genai.types.GenerationConfig(temperature=0.2))
-    sub_queries = response.text.strip().split('\n')
-    cleaned_queries = [re.sub(r'^\s*-\s*|\s*\d+\.\s*', '', q).strip() for q in sub_queries if q.strip()]
-    return cleaned_queries if cleaned_queries else [query]
-
-def _search_multiple_queries(queries: List[str], retriever: BaseRetriever, k_per_query: int = 3) -> List[Document]:
-    """Hàm helper để tìm kiếm cho nhiều truy vấn và gộp kết quả."""
-    all_results = []
-    print("---Đang thực hiện tìm kiếm cho các truy vấn con---")
-    for sub_q in queries:
-        print(f"  -> Đang tìm kiếm cho: '{sub_q}'")
-        try:
-            all_results.extend(retriever.invoke(sub_q, k=k_per_query))
-        except Exception as e:
-            print(f"  Lỗi khi tìm kiếm cho '{sub_q}': {e}")
-            continue
-    unique_docs = list({doc.page_content: doc for doc in all_results}.values())
-    print(f"---Tìm thấy tổng cộng {len(all_results)} tài liệu, sau khi lọc còn {len(unique_docs)} tài liệu duy nhất.---")
-    return unique_docs
-
-def transformed_search(query: str, transformation_type: str, model: genai.GenerativeModel, retriever: BaseRetriever) -> List[Document]:
-    """Thực hiện tìm kiếm sử dụng truy vấn đã được biến đổi."""
-    if transformation_type == "rewrite":
-        print("🔎 Bắt đầu biến đổi truy vấn: REWRITE (Thành 1 câu khái quát)")
-        transformed_query = rewrite_to_general_query(model, query)
-        print(f"  -> Câu hỏi khái quát hơn: {transformed_query}")
-        return retriever.invoke(transformed_query)
-    elif transformation_type == "step_back" or transformation_type == "decompose": # Gộp step_back và decompose
-        print(f"🔎 Bắt đầu biến đổi truy vấn: {transformation_type.upper()}")
-        queries = decompose_query(model, query) # Cả hai đều có thể dùng logic phân rã
-        return _search_multiple_queries(queries, retriever)
-    print("🔎 Thực hiện tìm kiếm thông thường (không biến đổi)")
-    return retriever.invoke(query)
-
-
-# ==============================================================================
-# PHẦN 2: LOGIC ĐỒ THỊ LANGGRAPH (RAG PIPELINE)
-# ==============================================================================
 
 class GraphState(TypedDict):
     query: str
@@ -268,10 +188,6 @@ workflow.add_edge("generate_answer", END)
 app = workflow.compile()
 print("✅ LangGraph với logic fallback đã được biên dịch thành công!")
 
-
-# ==============================================================================
-# PHẦN 3: HÀM WRAPPER VÀ VÒNG LẶP CHÍNH
-# ==============================================================================
 
 def rag_pipeline(query: str, history: List[tuple], transformation_type: Optional[str]):
     """Hàm chính để gọi và chạy LangGraph."""

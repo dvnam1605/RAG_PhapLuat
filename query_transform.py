@@ -5,7 +5,7 @@ from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 import google.generativeai as genai
 
-
+ 
 def rewrite_to_general_query(model: genai.GenerativeModel, query: str) -> str:
     """
     Viết lại câu hỏi gốc thành một câu hỏi khác hợp lý và khái quát hơn,
@@ -67,7 +67,6 @@ Phân rã câu hỏi phức tạp dưới đây.
     return cleaned_queries if cleaned_queries else [query]
 
 
-# --- HÀM HELPER VÀ HÀM CHÍNH ---
 
 def _search_multiple_queries(
     queries: List[str],
@@ -95,33 +94,16 @@ def _search_multiple_queries(
     return unique_docs
 
 
-def transformed_search(
-    query: str,
-    transformation_type: str,
-    model: genai.GenerativeModel,
-    retriever: BaseRetriever,
-) -> List[Document]:
-    """
-    Thực hiện tìm kiếm sử dụng truy vấn đã được biến đổi.
-    """
+def transformed_search(query: str, transformation_type: str, model: genai.GenerativeModel, retriever: BaseRetriever) -> List[Document]:
+    """Thực hiện tìm kiếm sử dụng truy vấn đã được biến đổi."""
     if transformation_type == "rewrite":
         print("🔎 Bắt đầu biến đổi truy vấn: REWRITE (Thành 1 câu khái quát)")
         transformed_query = rewrite_to_general_query(model, query)
         print(f"  -> Câu hỏi khái quát hơn: {transformed_query}")
-        # Tìm kiếm chỉ với MỘT câu hỏi đã được viết lại
         return retriever.invoke(transformed_query)
-
-    elif transformation_type == "step_back":
-        print("🔎 Bắt đầu biến đổi truy vấn: STEP_BACK")
-        transformed_query = decompose_query(model, query) # <-- Sửa lỗi: dùng đúng hàm
-        print(f"  -> Truy vấn 'lùi một bước': {transformed_query}")
-        return retriever.invoke(transformed_query)
-
-    elif transformation_type == "decompose":
-        print("🔎 Bắt đầu biến đổi truy vấn: DECOMPOSE")
-        queries = decompose_query(model, query)
+    elif transformation_type == "step_back" or transformation_type == "decompose": # Gộp step_back và decompose
+        print(f"🔎 Bắt đầu biến đổi truy vấn: {transformation_type.upper()}")
+        queries = decompose_query(model, query) # Cả hai đều có thể dùng logic phân rã
         return _search_multiple_queries(queries, retriever)
-
-    # Nếu không có transformation_type hợp lệ, thực hiện tìm kiếm thông thường
     print("🔎 Thực hiện tìm kiếm thông thường (không biến đổi)")
     return retriever.invoke(query)
