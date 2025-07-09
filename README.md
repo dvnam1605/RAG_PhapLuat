@@ -13,7 +13,7 @@ The system retrieves relevant legal document passages based on user queries and 
 ## Components
 
 - **Vector Store**: FAISS for efficient similarity search
-- **Embeddings**: GPT4All for local embedding generation
+- **Embeddings**: vietnamese-bi-encoder
 - **LLM**: Google Gemini API for response generation
 - **Interface**: Streamlit web interface for easy interaction
 - **Data**: Collection of Vietnamese legal documents
@@ -75,4 +75,3 @@ The system retrieves relevant legal document passages based on user queries and 
 - **Rewrite**: Enhances queries with specific legal terminology and concepts
 - **Step Back**: Creates a more general version of the query to capture broader legal principles
 - **Decompose**: Breaks complex legal queries into focused sub-questions
-
