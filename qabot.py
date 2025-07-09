@@ -1,5 +1,4 @@
 import os
-import re
 import time
 from typing import TypedDict, List, Literal, Optional
 
@@ -9,32 +8,39 @@ from langgraph.graph import StateGraph, END
 from langchain_community.embeddings import GPT4AllEmbeddings
 from langchain_community.vectorstores import FAISS
 from duckduckgo_search import DDGS
-from langchain_core.documents import Document
-from langchain_core.retrievers import BaseRetriever
 from query_transform import transformed_search
+from langchain_huggingface import HuggingFaceEmbeddings
 
 load_dotenv()
 API_KEY = os.getenv("API_KEY")
 if not API_KEY:
     raise ValueError("API key for Google Generative AI is not set in the environment variables.")
 
-# --- CÁC HẰNG SỐ ---
 MODEL_NAME = "gemini-1.5-flash"
-EMBEDDING_MODEL_PATH = "model/all-MiniLM-L6-v2-f16.gguf"
+# EMBEDDING_MODEL_PATH = "model/all-MiniLM-L6-v2-f16.gguf"
 VECTOR_STORE_PATH = "vector_store/faiss"
 MAX_WEB_RESULTS = 3 # Giảm số kết quả để tránh RateLimit
 
 print("Đang cấu hình các mô hình...")
 genai.configure(api_key=API_KEY)
 llm_model = genai.GenerativeModel(MODEL_NAME)
-embeddings = GPT4AllEmbeddings(model_file=EMBEDDING_MODEL_PATH)
+# embeddings = GPT4AllEmbeddings(model_file=EMBEDDING_MODEL_PATH)
+model_path= "models/vietnamese-bi-encoder"
+model_kwargs = {'device': 'cpu'} 
+encode_kwargs = {'normalize_embeddings': True}
+
+embeddings = HuggingFaceEmbeddings(
+        model_name=model_path,
+        model_kwargs=model_kwargs,
+        encode_kwargs=encode_kwargs
+)
 
 try:
     print(f"Đang tải Vector Store từ '{VECTOR_STORE_PATH}'...")
     vector_store = FAISS.load_local(VECTOR_STORE_PATH, embeddings, allow_dangerous_deserialization=True)
     retriever = vector_store.as_retriever(
                                             search_type="similarity",
-                                            search_kwargs={'k': 5}
+                                            search_kwargs={'k': 20} # Giảm k để tránh quá tải
                                         )
     print("✅ Hệ thống đã sẵn sàng.\n")
 except Exception as e:
@@ -53,7 +59,6 @@ class GraphState(TypedDict):
     route_decision: str
     web_search_failed: bool = False
 
-# --- CÁC NODE CỦA ĐỒ THỊ ---
 
 def handle_internal_search(state: GraphState) -> dict:
     if state.get('web_search_failed', False):
@@ -64,7 +69,7 @@ def handle_internal_search(state: GraphState) -> dict:
     query = state['query']
     transformation_type = state.get('transformation_type', None)
     print(f"---Sử dụng phương pháp biến đổi: {transformation_type.upper() if transformation_type else 'REGULAR'}---")
-    results = transformed_search(query=query, transformation_type=transformation_type, model=llm_model, retriever=retriever)
+    results = transformed_search(query=query, transformation_type=transformation_type, model=llm_model, retriever=retriever, rerank_top_n = 5)
     
     context = "\n\n---\n\n".join([doc.page_content for doc in results]) if results else "Không có dữ liệu nào được tìm thấy."
     prompt_template = f"""Bạn là một trợ lý pháp lý AI thông minh và trung thực. Nhiệm vụ của bạn là trả lời câu hỏi của người dùng CHỈ dựa vào phần "Dữ liệu nội bộ" được cung cấp. Luôn trung thực, nếu không có thông tin, hãy nói rõ là không có.
@@ -155,7 +160,6 @@ def final_router(state: GraphState) -> dict:
         print("---ROUTER (FINAL): Quyết định -> Tìm kiếm trên web (web_search)---")
         return {"route_decision": "web_search"}
 
-# --- CÁC HÀM ĐIỀU KIỆN CỦA ĐỒ THỊ ---
 
 def decide_initial_route(state: GraphState) -> Literal["internal_search", "web_search"]:
     """Quyết định hướng đi ban đầu."""
@@ -170,7 +174,6 @@ def decide_after_web_search(state: GraphState) -> Literal["generate_answer", "in
         print("---CONDITION: Tìm kiếm web thành công, chuyển hướng sang generate_answer.---")
         return "generate_answer"
 
-# --- XÂY DỰNG VÀ BIÊN DỊCH ĐỒ THỊ ---
 print("Đang xây dựng đồ thị LangGraph...")
 workflow = StateGraph(GraphState)
 
@@ -203,8 +206,10 @@ if __name__ == "__main__":
     conversation_history = []
     while True:
         user_query = input("\n❓ Nhập câu hỏi của bạn (hoặc gõ 'exit' để thoát): ")
-        if user_query.lower() in ['exit', 'quit']: break
-        if not user_query.strip(): continue
+        if user_query.lower() in ['exit', 'quit']: 
+            break
+        if not user_query.strip(): 
+            continue
         
         print("\nChọn phương pháp biến đổi truy vấn...")
         choice = input("(Enter: regular, 1: rewrite, 2: decompose): ").strip()

@@ -5,13 +5,14 @@ from langchain_community.vectorstores import FAISS
 from langchain.document_loaders import DirectoryLoader, TextLoader
 from langchain.docstore.document import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_huggingface import HuggingFaceEmbeddings
 
 # --- CẤU HÌNH ---
 DATA_PATH = "crawler/output_texts"
 DB_PATH = "vector_store/faiss"
 EMBEDDING_MODEL_PATH = "model/all-MiniLM-L6-v2-f16.gguf"
-MAX_CHUNK_SIZE = 1500  # Kích thước tối đa cho một chunk (tính bằng ký tự)
-CHUNK_OVERLAP = 200    # Độ chồng lấn giữa các chunk bị cắt
+MAX_CHUNK_SIZE = 1200  # Kích thước tối đa cho một chunk (tính bằng ký tự)
+CHUNK_OVERLAP = 300    # Độ chồng lấn giữa các chunk bị cắt
 
 def preprocess_text(text: str) -> str:
     """
@@ -64,12 +65,25 @@ def build_vector_store():
     print(f"Hoàn tất! Đã tạo tổng cộng {len(all_chunks)} chunks.")
     
     print("\nĐang khởi tạo mô hình embeddings...")
-    embeddings_model = GPT4AllEmbeddings(model_file=EMBEDDING_MODEL_PATH)
+
+    model_path= "models/vietnamese-bi-encoder"
+    model_kwargs = {'device': 'cpu'} 
+    encode_kwargs = {'normalize_embeddings': True}
+    
+    # embeddings = GPT4AllEmbeddings(
+    #     model_file=EMBEDDING_MODEL_PATH,
+    # )
+
+    embeddings = HuggingFaceEmbeddings(
+        model_name=model_path,
+        model_kwargs=model_kwargs,
+        encode_kwargs=encode_kwargs
+)
     
     print("Đang tạo vector store từ các chunks (quá trình này có thể mất vài phút)...")
     vector_store = FAISS.from_documents(
         documents=all_chunks,
-        embedding=embeddings_model
+        embedding=embeddings
     )
     
     if not os.path.exists("vector_store"):

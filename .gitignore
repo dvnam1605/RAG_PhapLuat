@@ -4,6 +4,7 @@ __pycache__/
 .env
 
 model
+models
 result.json
 # Jupyter Notebook
 transform_query.ipynb
