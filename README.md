@@ -4,6 +4,9 @@ This project implements a Retrieval-Augmented Generation (RAG) system for Vietna
 
 ## Overview
 
+![image](https://github.com/user-attachments/assets/bafae5cf-765c-4f9e-8577-b68e0f850a04)
+
+
 The system retrieves relevant legal document passages based on user queries and uses a Large Language Model (Gemini) to generate accurate responses grounded in the retrieved context. It features multiple query transformation methods to improve retrieval quality:
 
 - **Rewrite**: Makes queries more specific with legal terminology
