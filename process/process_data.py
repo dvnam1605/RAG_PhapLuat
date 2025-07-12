@@ -62,7 +62,7 @@ def build_vector_store():
         print("Lỗi: Không tạo được chunk nào từ các tài liệu.")
         return
         
-    print(f"Hoàn tất! Đã tạo tổng cộng {len(all_chunks)} chunks.")
+    print(f"Hoàn tất!  Đã tạo tổng cộng {len(all_chunks)} chunks.")
     
     print("\nĐang khởi tạo mô hình embeddings...")
 

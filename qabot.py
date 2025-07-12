@@ -1,53 +1,54 @@
 import os
 import time
+import traceback
 from typing import TypedDict, List, Literal, Optional
 
 import google.generativeai as genai
 from dotenv import load_dotenv
 from langgraph.graph import StateGraph, END
-from langchain_community.embeddings import GPT4AllEmbeddings
 from langchain_community.vectorstores import FAISS
-from duckduckgo_search import DDGS
+from langchain_community.tools.tavily_search import TavilySearchResults
 from query_transform import transformed_search
 from langchain_huggingface import HuggingFaceEmbeddings
 
 load_dotenv()
 API_KEY = os.getenv("API_KEY")
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
+
 if not API_KEY:
     raise ValueError("API key for Google Generative AI is not set in the environment variables.")
+if not TAVILY_API_KEY:
+    raise ValueError("TAVILY_API_KEY is not set in the environment variables.")
 
 MODEL_NAME = "gemini-1.5-flash"
-# EMBEDDING_MODEL_PATH = "model/all-MiniLM-L6-v2-f16.gguf"
 VECTOR_STORE_PATH = "vector_store/faiss"
-MAX_WEB_RESULTS = 3 # Giảm số kết quả để tránh RateLimit
+MAX_WEB_RESULTS = 5
 
 print("Đang cấu hình các mô hình...")
 genai.configure(api_key=API_KEY)
 llm_model = genai.GenerativeModel(MODEL_NAME)
-# embeddings = GPT4AllEmbeddings(model_file=EMBEDDING_MODEL_PATH)
-model_path= "models/vietnamese-bi-encoder"
-model_kwargs = {'device': 'cpu'} 
+model_path = "models/vietnamese-bi-encoder"
+model_kwargs = {'device': 'cpu'}
 encode_kwargs = {'normalize_embeddings': True}
 
 embeddings = HuggingFaceEmbeddings(
-        model_name=model_path,
-        model_kwargs=model_kwargs,
-        encode_kwargs=encode_kwargs
+    model_name=model_path,
+    model_kwargs=model_kwargs,
+    encode_kwargs=encode_kwargs
 )
 
 try:
     print(f"Đang tải Vector Store từ '{VECTOR_STORE_PATH}'...")
     vector_store = FAISS.load_local(VECTOR_STORE_PATH, embeddings, allow_dangerous_deserialization=True)
     retriever = vector_store.as_retriever(
-                                            search_type="similarity",
-                                            search_kwargs={'k': 20} # Giảm k để tránh quá tải
-                                        )
+        search_type="similarity",
+        search_kwargs={'k': 20}
+    )
     print("✅ Hệ thống đã sẵn sàng.\n")
 except Exception as e:
     print(f"❌ LỖI: Không thể tải Vector Store. Vui lòng chạy chức năng 'build' trước.")
     print(f"   Lỗi chi tiết: {e}")
-    retriever = None # Đặt retriever là None nếu không tải được
-
+    retriever = None
 
 class GraphState(TypedDict):
     query: str
@@ -59,7 +60,6 @@ class GraphState(TypedDict):
     route_decision: str
     web_search_failed: bool = False
 
-
 def handle_internal_search(state: GraphState) -> dict:
     if state.get('web_search_failed', False):
         print("---NODE: Tìm kiếm web thất bại, chuyển sang tìm kiếm nội bộ (FAISS)---")
@@ -69,24 +69,23 @@ def handle_internal_search(state: GraphState) -> dict:
     query = state['query']
     transformation_type = state.get('transformation_type', None)
     print(f"---Sử dụng phương pháp biến đổi: {transformation_type.upper() if transformation_type else 'REGULAR'}---")
-    results = transformed_search(query=query, transformation_type=transformation_type, model=llm_model, retriever=retriever, rerank_top_n = 5)
+    results = transformed_search(query=query, transformation_type=transformation_type, model=llm_model, retriever=retriever, rerank_top_n=5)
     
-    context = "\n\n---\n\n".join([doc.page_content for doc in results]) if results else "Không có dữ liệu nào được tìm thấy."
+    documents = [doc.page_content for doc in results]
     prompt_template = f"""Bạn là một trợ lý pháp lý AI thông minh và trung thực. Nhiệm vụ của bạn là trả lời câu hỏi của người dùng CHỈ dựa vào phần "Dữ liệu nội bộ" được cung cấp. Luôn trung thực, nếu không có thông tin, hãy nói rõ là không có.
 **Dữ liệu nội bộ:**
 ---
-{context}
+{{context}}
 ---
 **Câu hỏi:** {query}
 **Trả lời:**
 """
-    documents = [doc.page_content for doc in results]
     return {"documents": documents, "prompt_template": prompt_template, "web_search_failed": False}
 
 def handle_web_search(state: GraphState) -> dict:
-    print("---NODE: Thực hiện tìm kiếm trên web (DuckDuckGo)---")
+    print("---NODE: Thực hiện tìm kiếm trên web (Tavily)---")
     query = state['query']
-    prompt_template = f"""Dựa CHỦ YẾU vào các kết quả tìm kiếm sau đây để trả lời câu hỏi một cách ngắn gọn và chính xác. Trích dẫn nguồn nếu có thể.
+    prompt_template = f"""Dựa CHỦ YẾU vào các kết quả tìm kiếm sau đây để trả lời câu hỏi một cách chi tiết và chính xác. Trích dẫn tất cả các nguồn.
 **Kết quả tìm kiếm:**
 ---
 {{context}}
@@ -94,26 +93,34 @@ def handle_web_search(state: GraphState) -> dict:
 **Câu hỏi:** {query}
 **Trả lời:**
 """
-    max_retries = 2
-    initial_delay = 1
-    for attempt in range(max_retries):
-        try:
-            print(f"Đang gửi yêu cầu đến DuckDuckGo... (Lần thử {attempt + 1}/{max_retries})")
-            with DDGS() as ddgs:
-                results = list(ddgs.text(query, max_results=MAX_WEB_RESULTS))
-            if results:
-                documents = [f"Nguồn: {r.get('href')}\nNội dung: {r.get('body')}" for r in results if r.get('body')]
-                if documents:
-                     return {"documents": documents, "prompt_template": prompt_template, "web_search_failed": False}
-            print("--- Tìm kiếm web không trả về kết quả nào. Coi như thất bại. ---")
-            return {"web_search_failed": True, "documents": []}
-        except Exception as e:
-            print(f"Lỗi khi tìm kiếm trên web (lần thử {attempt + 1}): {e}")
-            if attempt < max_retries - 1:
-                time.sleep(initial_delay * (2 ** attempt))
-            else:
-                return {"web_search_failed": True, "documents": []}
-    return {"web_search_failed": True, "documents": []}
+    search_tool = TavilySearchResults(max_results=MAX_WEB_RESULTS, api_key=TAVILY_API_KEY )
+    
+    try:
+        print(f"Đang gửi yêu cầu đến Tavily với câu hỏi: '{query}'")
+        results = search_tool.invoke(query)
+
+
+        if isinstance(results, list) and results:
+            documents = []
+            for r in results:
+                # Lấy nội dung, ưu tiên key 'content'. Nếu không có, thử key 'body'.
+                content = r.get('content') or r.get('body') 
+                url = r.get('url')
+                
+                if content and url:
+                    documents.append(f"Nguồn: {url}\nNội dung: {content}")
+
+            if documents:
+                print(f"--- Xử lý thành công {len(documents)} kết quả từ Tavily. ---")
+                return {"documents": documents, "prompt_template": prompt_template, "web_search_failed": False}
+
+        print("--- Tìm kiếm web không trả về nội dung hợp lệ (danh sách rỗng hoặc không có content/url). Coi như thất bại. ---")
+        return {"web_search_failed": True, "documents": []}
+
+    except Exception as e:
+        print(f"!!! LỖI khi thực thi tìm kiếm trên web !!!")
+        traceback.print_exc()
+        return {"web_search_failed": True, "documents": []}
 
 def generate_final_answer(state: GraphState) -> dict:
     print("---NODE: Sinh câu trả lời cuối cùng---")
@@ -141,7 +148,7 @@ def final_router(state: GraphState) -> dict:
 2.  **RA QUYẾT ĐỊNH:**
     *   Nếu `BẰNG CHỨNG` có chứa thông tin liên quan đến `CÂU HỎI`, BẠN **BẮT BUỘC** PHẢI chọn `internal_search`.
     *   Bạn CHỈ được phép chọn `web_search` khi `BẰNG CHỨNG` hoàn toàn không liên quan.
-**KHI CÓ BẤT KỲ NGHI NGỜ NÀO, LUÔN MẶC ĐỊNH CHỌN `internal_search`.**
+**KHI CÓ BẤT KỲ NGHI NGỜ NÀO, LUÔN MẶC ĐỊNH CHỌN `web_search`.**
 ---
 **BẰNG CHỨNG TỪ CSDL NỘI BỘ:**
 {evidence}
