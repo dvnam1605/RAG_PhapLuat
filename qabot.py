@@ -84,37 +84,58 @@ def handle_internal_search(state: GraphState) -> dict:
 
 def handle_web_search(state: GraphState) -> dict:
     print("---NODE: Thực hiện tìm kiếm trên web (Tavily)---")
-    query = state['query']
-    prompt_template = f"""Dựa CHỦ YẾU vào các kết quả tìm kiếm sau đây để trả lời câu hỏi một cách chi tiết và chính xác. Trích dẫn tất cả các nguồn.
+    
+    # Lấy câu hỏi gốc và loại biến đổi từ state
+    original_query = state['query']
+    transformation_type = state.get('transformation_type', None)
+    
+    print(f"---Sử dụng phương pháp biến đổi: {transformation_type.upper() if transformation_type else 'REGULAR'}---")
+
+    # Sử dụng hàm transformed_search để lấy các câu hỏi đã được biến đổi
+    # quan trọng: Không truyền retriever để nó chỉ thực hiện biến đổi
+    transformed_queries = transformed_search(
+        query=original_query,
+        transformation_type=transformation_type,
+        model=llm_model,
+        retriever=None, # Báo hiệu đây là biến đổi cho web search
+        rerank_top_n=0 # Không cần rerank cho web search
+    )
+
+    prompt_template = f"""Dựa CHỦ YẾU vào các kết quả tìm kiếm sau đây để trả lời câu hỏi một cách ngắn gọn và chính xác. Trích dẫn nguồn nếu có thể.
 **Kết quả tìm kiếm:**
 ---
 {{context}}
 ---
-**Câu hỏi:** {query}
+**Câu hỏi:** {original_query}
 **Trả lời:**
 """
-    search_tool = TavilySearchResults(max_results=MAX_WEB_RESULTS, api_key=TAVILY_API_KEY )
     
     try:
-        print(f"Đang gửi yêu cầu đến Tavily với câu hỏi: '{query}'")
-        results = search_tool.invoke(query)
+        # Khởi tạo công cụ Tavily
+        search_tool = TavilySearchResults(
+            max_results=MAX_WEB_RESULTS,
+            api_key=TAVILY_API_KEY
+        )
 
+        all_results = []
+        # Lặp qua từng câu hỏi đã được biến đổi để tìm kiếm
+        for query in transformed_queries:
+            print(f"Đang gửi yêu cầu đến Tavily với câu hỏi đã biến đổi: '{query}'")
+            results = search_tool.invoke(query)
+            if isinstance(results, list):
+                all_results.extend(results)
 
-        if isinstance(results, list) and results:
-            documents = []
-            for r in results:
-                # Lấy nội dung, ưu tiên key 'content'. Nếu không có, thử key 'body'.
-                content = r.get('content') or r.get('body') 
-                url = r.get('url')
-                
-                if content and url:
-                    documents.append(f"Nguồn: {url}\nNội dung: {content}")
-
+        # Loại bỏ các kết quả trùng lặp dựa trên URL
+        unique_results = {item['url']: item for item in all_results}.values()
+        
+        if unique_results:
+            documents = [f"Nguồn: {r.get('url')}\nNội dung: {r.get('content')}" for r in unique_results if r.get('content') and r.get('url')]
+            
             if documents:
-                print(f"--- Xử lý thành công {len(documents)} kết quả từ Tavily. ---")
+                print(f"--- Xử lý thành công {len(documents)} kết quả duy nhất từ Tavily. ---")
                 return {"documents": documents, "prompt_template": prompt_template, "web_search_failed": False}
 
-        print("--- Tìm kiếm web không trả về nội dung hợp lệ (danh sách rỗng hoặc không có content/url). Coi như thất bại. ---")
+        print("--- Tìm kiếm web không trả về nội dung hợp lệ. Coi như thất bại. ---")
         return {"web_search_failed": True, "documents": []}
 
     except Exception as e:

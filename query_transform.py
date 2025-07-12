@@ -5,6 +5,8 @@ from langchain_core.retrievers import BaseRetriever
 import google.generativeai as genai
 from sentence_transformers import CrossEncoder
 
+from typing import Optional
+
 print("Đang tải mô hình Reranker...")
 reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
 print("✅ Tải xong mô hình Reranker.")
@@ -117,39 +119,58 @@ def _search_multiple_queries(
 
 def transformed_search(
     query: str,
-    transformation_type: str,
+    transformation_type: Optional[str], # Sửa lại để chấp nhận None
     model: genai.GenerativeModel,
-    retriever: BaseRetriever,
+    retriever: Optional[BaseRetriever], # Sửa lại để chấp nhận None
     use_reranking: bool = True,
     rerank_top_n: int = 5
-) -> List[Document]:
+) -> List: # Kiểu trả về có thể là List[Document] hoặc List[str]
     """
-    Thực hiện tìm kiếm sử dụng truy vấn đã được biến đổi và tùy chọn áp dụng reranking
-    bằng Cross-Encoder.
+    Thực hiện biến đổi truy vấn. 
+    - Nếu có retriever, thực hiện tìm kiếm, rerank và trả về List[Document].
+    - Nếu retriever là None, chỉ trả về danh sách các câu hỏi đã biến đổi List[str].
     """
-    retrieved_docs = []
-
+    # Bước 1: Biến đổi câu hỏi thành một hoặc nhiều truy vấn
+    queries_to_process = []
     if transformation_type == "rewrite":
         print("🔎 Bắt đầu biến đổi truy vấn: REWRITE")
         transformed_query = rewrite_to_general_query(model, query)
         print(f"  -> Câu hỏi khái quát hơn: {transformed_query}")
-        retrieved_docs = retriever.invoke(transformed_query)
+        queries_to_process.append(transformed_query)
     elif transformation_type == "step_back" or transformation_type == "decompose":
         print(f"🔎 Bắt đầu biến đổi truy vấn: {transformation_type.upper()}")
-        queries = decompose_query(model, query)
-        retrieved_docs = _search_multiple_queries(queries, retriever)
+        queries_to_process = decompose_query(model, query)
     else: # 'none' hoặc bất kỳ giá trị nào khác
-        print("🔎 Thực hiện tìm kiếm thông thường (không biến đổi)")
-        retrieved_docs = retriever.invoke(query)
+        print("🔎 Sử dụng truy vấn gốc (không biến đổi)")
+        queries_to_process.append(query)
 
+    # Bước 2: Kiểm tra chế độ hoạt động (Web Search hay Internal Search)
+    if retriever is None:
+        print("--- Chế độ chỉ biến đổi truy vấn (cho Web Search) ---")
+        return queries_to_process # Trả về danh sách các chuỗi câu hỏi
+
+    # --- Các bước dưới đây chỉ chạy khi có retriever (Internal Search) ---
+    
+    # Bước 3: Tìm kiếm với các truy vấn đã biến đổi
+    print("\n--- Bắt đầu tìm kiếm tài liệu nội bộ ---")
+    if len(queries_to_process) > 1:
+        retrieved_docs = _search_multiple_queries(queries_to_process, retriever)
+    else:
+        retrieved_docs = retriever.invoke(queries_to_process[0])
+    
     print("\n--- DEBUG: TÀI LIỆU TRƯỚC KHI RERANK ---")
     for i, doc in enumerate(retrieved_docs):
-        print(f"{i+1}. {doc.page_content[:100]}...") # In 100 ký tự đầu
+        print(f"{i+1}. {doc.page_content[:100]}...")
     print("-" * 20)
 
+    # Bước 4: Tùy chọn Rerank kết quả
     if not use_reranking:
         print("🚫 Bỏ qua bước Reranking.")
         return retrieved_docs
+
+    if not retrieved_docs:
+        print("Không có tài liệu nào để rerank.")
+        return []
 
     reranked_docs = rerank_documents_cross_encoder(
         query=query, # Luôn sử dụng câu hỏi GỐC để rerank
