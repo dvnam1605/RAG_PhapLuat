@@ -1,81 +1,135 @@
-# Vietnamese Legal Document RAG System
+# ⚖️ AI Legal Assistant - Agentic RAG
 
-This project implements a Retrieval-Augmented Generation (RAG) system for Vietnamese legal documents. The system uses local embeddings, vector stores, and query transformation techniques to provide accurate answers to legal questions based on a corpus of Vietnamese legal texts.
+This is an advanced Retrieval-Augmented Generation (RAG) chatbot project built on an **Agentic Architecture**. The system is capable of autonomous reasoning, planning, and flexibly utilizing multiple tools to answer complex questions about Vietnamese law and general knowledge.
 
-## Overview
+The project leverages **LangChain** and **LangGraph** to construct an intelligent workflow, combining the power of the **Google Gemini** Large Language Model with specialized search tools.
 
-![image](https://github.com/user-attachments/assets/2c26845a-ef49-40fe-965c-bb5e8483601e)
+## ✨ Key Features
 
+-   **Agentic Architecture:** Instead of the traditional linear RAG pipeline (Retrieve -> Augment -> Generate), this system employs a central Agent that operates in an iterative loop: **Think -> Act -> Observe**. This allows it to methodically solve complex problems.
+-   **Multi-tool Usage:** The Agent is equipped with a diverse toolkit and autonomously decides which tool to use for each task:
+    -   `internal_search_and_rerank`: Searches a local legal document database (FAISS) and automatically re-ranks the results using a Cross-Encoder for enhanced accuracy.
+    -   `web_search`: Fetches up-to-date information from the internet using Tavily Search.
+    -   `decompose_question`: Automatically breaks down complex, multi-part questions into simpler, manageable sub-questions.
+    -   `rewrite_question`: Automatically generalizes overly specific or detailed queries for more effective searching.
+-   **Conversational Memory:** The system maintains the context of the conversation, allowing users to ask follow-up questions naturally.
+-   **Source Citation:** Automatically cites sources (URLs) when answers are derived from web search results, enhancing transparency and trustworthiness.
+-   **Web Interface:** A user-friendly web interface built with Streamlit.
 
+## 🏛️ System Architecture
 
-The system retrieves relevant legal document passages based on user queries and uses a Large Language Model (Gemini) to generate accurate responses grounded in the retrieved context. It features multiple query transformation methods to improve retrieval quality:
+The Agentic RAG workflow is no longer a straight line but an intelligent, cyclical process:
 
-- **Rewrite**: Makes queries more specific with legal terminology
-- **Step Back**: Generalizes queries to capture broader legal concepts
-- **Decompose**: Breaks complex queries into simpler sub-queries
+```mermaid
+graph TD
+    A[👨‍💻 User Enters Query] --> B(🧠 Agent Node);
+    B --> |1. Think & Plan| C{Select Tool};
+    C --> |Complex Question| D1[Tool: decompose_question];
+    C --> |Specific Question| D2[Tool: rewrite_question];
+    C --> |Legal Question| D3[Tool: internal_search_and_rerank];
+    C --> |General/No-Result Question| D4[Tool: web_search];
+    D1 --> E[⚡ Action Node: Execute];
+    D2 --> E;
+    D3 --> E;
+    D4 --> E;
+    E --> |2. Observe Results| B;
+    B --> |3. Sufficient Information?| F[✅ Generate Final Answer];
+    F --> G[💬 Display to User];
+```
 
-## Components
+## 📁 Project Structure
 
-- **Vector Store**: FAISS for efficient similarity search
-- **Embeddings**: vietnamese-bi-encoder
-- **LLM**: Google Gemini API for response generation
-- **Interface**: Streamlit web interface for easy interaction
-- **Data**: Collection of Vietnamese legal documents
-
-## Project Structure
+The project is organized as follows (based on our final agreed-upon structure):
 
 ```
-├── app.py              # Streamlit web interface
-├── qabot.py            # Main RAG implementation
-├── query_transform.py  # Query transformation methods
-├── model/              # Embedding models
-├── vector_store/       # FAISS vector store files
-├── output_texts/       # Processed legal documents
-└── crawler/            # Data collection utilities
+RAG/
+├── agentic_rag/
+│   ├── __pycache__/
+│   ├── vietnamese-bi-encoder/  # Embedding model
+│   ├── vector_store/           # FAISS vector database
+│   ├── agentic_bot.py          # Main Agent logic (backend)
+│   └── app.py                  # Streamlit user interface
+│
+├── .env                        # File for API keys (DO NOT commit to Git)
+├── .gitignore
+├── query_transform.py          # Query transformation helper functions
+├── requirements.txt            # Required Python libraries
+└── README.md                   # This file
 ```
 
-## Setup and Installation
+## 🚀 Setup and Installation
 
-### Prerequisites
+Follow these steps to set up and run the project locally.
 
+### 1. Prerequisites
 - Python 3.9+
 - Git
-- [Optional] CUDA-compatible GPU for faster embedding
 
-### Installation
+### 2. Installation Steps
 
-1. Clone this repository:
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/dvnam1605/RAG_PhapLuat.git
+    ```
 
-   ```
-   https://github.com/dvnam1605/RAG_PhapLuat.git
-   ```
+2.  **Create and activate a virtual environment (recommended):**
+    ```bash
+    # Create virtual environment
+    python -m venv venv
 
-2. Install dependencies:
+    # Activate virtual environment
+    .\venv\Scripts\activate
+    ```
 
-   ```
-   pip install -r requirements.txt
-   ```
+3.  **Install the required libraries:**
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-3. Create a `.env` file with your Google API key:
+4.  **Set up Environment Variables:**
+    Create a file named `.env` in the root directory (`RAG/`) and add your API keys:
+    ```env
+    # .env
 
-   ```
-   API_KEY=your_google_api_key_here
-   ```
+    # Get from Google AI Studio
+    API_KEY="AIzaSy...YOUR_GEMINI_API_KEY"
 
-4. Run the Streamlit interface:
-   ```
-   streamlit run app.py
-   ```
+    # Get from the Tavily AI dashboard
+    TAVILY_API_KEY="tvly-...YOUR_TAVILY_API_KEY"
+    ```
 
-## Usage
+5.  **Prepare Data and Models:**
+    -   Ensure the `agentic_rag/vietnamese-bi-encoder` directory contains all the necessary files for the embedding model.
+    -   Ensure the `agentic_rag/vector_store` directory contains the pre-built `index.faiss` and `index.pkl` files.
 
-1. Enter a legal question in Vietnamese in the text box
-2. Select a query transformation method (optional)
-3. Click "Gửi" to get an answer
-4. Explore retrieved legal contexts in the expandable sections
+### 3. Running the Application
 
-## Query Transformation Methods
+After the setup is complete, you can run the application in two ways:
 
-- **Rewrite**: Enhances queries with specific legal terminology and concepts
-- **Step Back**: Creates a more general version of the query to capture broader legal principles
-- **Decompose**: Breaks complex legal queries into focused sub-questions
+1.  **Run the Web Interface (Streamlit):**
+    Open a terminal in the `RAG` root directory and run:
+    ```bash
+    streamlit run agentic_rag/app.py
+    ```
+    Open your web browser and navigate to `http://localhost:8501`.
+
+2.  **Run in Terminal Test Mode:**
+    To quickly test the bot's logic, you can run the backend script directly:
+    ```bash
+    python agentic_rag/agentic_bot.py
+    ```
+
+## 🛠️ Tech Stack
+
+-   **Language:** Python 3
+-   **LLM:** Google Gemini 1.5 Flash
+-   **Frameworks:**
+    -   **LangChain & LangGraph:** For building and orchestrating the Agent's workflow.
+    -   **Streamlit:** For building the interactive web UI.
+-   **RAG & Search:**
+    -   **FAISS:** For vector storage and similarity search.
+    -   **Sentence-Transformers:** For creating text embeddings.
+    -   **Cross-Encoder:** For re-ranking search results to improve relevance.
+    -   **Tavily AI:** For real-time web search.
+
+---
