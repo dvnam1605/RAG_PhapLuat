@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+.vscode
+.env
+
+model
+models
+result.json
+# Jupyter Notebook
+transform_query.ipynb
+
+output_texts
+agentic_rag/vietnamese-bi-encoder/
