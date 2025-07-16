@@ -22,23 +22,20 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from query_transform import decompose_query, rewrite_to_general_query, rerank_documents_cross_encoder
 
-
-
-# === 1. CÀI ĐẶT VÀ KHỞI TẠO ===
-print("--- Bắt đầu quá trình cài đặt và khởi tạo ---")
 load_dotenv()
 API_KEY = os.getenv("API_KEY")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
-if not API_KEY: raise ValueError("API key của Google không được thiết lập.")
-if not TAVILY_API_KEY: raise ValueError("API key của Tavily không được thiết lập.")
+if not API_KEY: 
+    raise ValueError("API key của Google không được thiết lập.")
+if not TAVILY_API_KEY: 
+    raise ValueError("API key của Tavily không được thiết lập.")
 
 llm_model = ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=API_KEY, convert_system_message_to_human=True)
 
 retriever = None
 try:
     print("Đang tải Embedding Model và Vector Store...")
-    # Use the correct path to the vietnamese-bi-encoder model
     model_path = os.path.join(os.path.dirname(__file__), "vietnamese-bi-encoder")
     embeddings = HuggingFaceEmbeddings(model_name=model_path, model_kwargs={'device': 'cpu'}, encode_kwargs={'normalize_embeddings': True})
     VECTOR_STORE_PATH = "vector_store/faiss"
@@ -49,7 +46,6 @@ except Exception as e:
     print(f"❌ LỖI: Không thể tải Vector Store: {e}")
 
 
-# === 2. ĐỊNH NGHĨA CÁC CÔNG CỤ (TOOLS) CHO AGENT ===
 @tool
 def internal_search_and_rerank(query: str) -> str:
     """Công cụ QUAN TRỌNG NHẤT để tìm kiếm thông tin trong cơ sở dữ liệu pháp luật nội bộ của Việt Nam. Luôn ưu tiên sử dụng công cụ này cho các câu hỏi liên quan đến luật, nghị định, thông tư."""
@@ -95,14 +91,12 @@ def rewrite_question(query: str) -> str:
 tools = [internal_search_and_rerank, web_search, decompose_question, rewrite_question]
 
 
-# === 3. THIẾT KẾ AGENT VÀ ĐỒ THỊ LANGGRAPH ===
 print("--- Thiết kế Agent và đồ thị LangGraph ---")
 class AgentState(TypedDict):
     messages: Annotated[list, add_messages]
 
 llm_with_tools = llm_model.bind_tools(tools)
 
-# SỬ DỤNG PROMPT ĐÃ NÂNG CẤP VỚI QUY TẮC TRÍCH DẪN
 AGENT_PROMPT = """Bạn là một AI chuyên gia pháp lý cực kỳ thông minh và có phương pháp của Việt Nam. Bạn suy nghĩ một cách có logic, từng bước một để trả lời câu hỏi của người dùng một cách chính xác và toàn diện nhất.
 
 **QUY TRÌNH BẮT BUỘC:**
@@ -165,8 +159,7 @@ workflow.set_entry_point("agent")
 workflow.add_conditional_edges("agent", should_continue, {"action": "action", "end": END})
 workflow.add_edge("action", "agent")
 
-
-# === 4. HÀM CHẠY PIPELINE VÀ GIAO DIỆN DÒNG LỆNH ===
+# pipline function to run the agentic RAG workflow
 def agentic_rag_pipeline(query: str, thread_id: str, app: Pregel):
     config = {"configurable": {"thread_id": thread_id}}
     final_state = app.invoke({"messages": [HumanMessage(content=query)]}, config=config)

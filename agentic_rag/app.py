@@ -1,5 +1,3 @@
-# filename: app.py
-
 import streamlit as st
 import uuid
 import sqlite3
