@@ -53,9 +53,11 @@ def internal_search_and_rerank(query: str) -> str:
     if not retriever: return "Lỗi: Vector store chưa được tải."
     try:
         initial_docs = retriever.invoke(query)
-        if not initial_docs: return f"Không tìm thấy tài liệu nào cho câu hỏi: '{query}'"
+        if not initial_docs: 
+            return f"Không tìm thấy tài liệu nào cho câu hỏi: '{query}'"
         reranked_docs = rerank_documents_cross_encoder(query=query, documents=initial_docs, top_n=5)
-        if not reranked_docs: return f"Sau khi xếp hạng lại, không có tài liệu nào phù hợp cho câu hỏi: '{query}'"
+        if not reranked_docs: 
+            return f"Sau khi xếp hạng lại, không có tài liệu nào phù hợp cho câu hỏi: '{query}'"
         return "\n\n---\n\n".join([f"Trích đoạn liên quan (Điểm: {doc.metadata.get('rerank_score', 0):.2f}):\n{doc.page_content}" for doc in reranked_docs])
     except Exception as e:
         traceback.print_exc()
@@ -68,9 +70,11 @@ def web_search(query: str) -> str:
     try:
         search_tool = TavilySearchResults(max_results=3, api_key=TAVILY_API_KEY)
         results = search_tool.invoke(query)
-        if not results: return "Tìm kiếm trên web không trả về kết quả nào."
+        if not results: 
+            return "Tìm kiếm trên web không trả về kết quả nào."
         documents = [f"Nguồn: {r.get('url')}\nNội dung: {r.get('content')}" for r in results if r.get('content')]
-        if not documents: return "Tìm kiếm trên web có kết quả nhưng không chứa nội dung hữu ích."
+        if not documents: 
+            return "Tìm kiếm trên web có kết quả nhưng không chứa nội dung hữu ích."
         return "\n\n---\n\n".join(documents)
     except Exception as e:
         traceback.print_exc()

@@ -13,6 +13,7 @@ print("✅ Tải xong mô hình Reranker.")
 
 
 def rewrite_to_general_query(model: genai.GenerativeModel, query: str) -> str: 
+
     prompt = f"""Bạn là một Trợ lý AI pháp lý chuyên nghiệp. Nhiệm vụ của bạn là nhận một câu hỏi pháp lý từ người dùng và **viết lại nó thành MỘT câu hỏi pháp lý khác, hợp lý và khái quát hơn**.
 Mục tiêu là tìm ra các văn bản luật, nghị định, thông tư nền tảng liên quan đến vấn đề gốc.
 **QUY TẮC:**
@@ -35,6 +36,7 @@ Bây giờ, hãy viết lại câu hỏi dưới đây thành MỘT câu hỏi k
 
 
 def decompose_query(model: genai.GenerativeModel, query: str) -> List[str]:
+    
     prompt = f"""Bạn là một chuyên gia phân tích pháp lý. Nhiệm vụ của bạn là phân rã một câu hỏi pháp lý **phức tạp** thành nhiều câu hỏi con, **đơn giản và độc lập**.
 **QUY TẮC:** Mỗi câu hỏi con phải tập trung vào **MỘT** khía cạnh duy nhất và có thể trả lời độc lập. Mỗi câu hỏi con trên một dòng.
 ---
@@ -82,7 +84,7 @@ def rerank_documents_cross_encoder(
     # Tạo các cặp [câu hỏi, nội dung tài liệu] để mô hình chấm điểm
     pairs = [[query, doc.page_content] for doc in documents]
 
-    # Dự đoán điểm số, mô hình sẽ xử lý theo batch nên rất nhanh
+    # Dự đoán điểm số, mô hình sẽ xử lý theo batch
     scores = reranker.predict(pairs, show_progress_bar=True)
 
     # Gắn điểm số vào metadata của mỗi tài liệu
@@ -94,94 +96,3 @@ def rerank_documents_cross_encoder(
 
     print(f"✅ Reranking hoàn tất. Trả về {min(top_n, len(ranked_docs))} tài liệu hàng đầu.")
     return ranked_docs[:top_n]
-
-
-def _search_multiple_queries(
-    queries: List[str],
-    retriever: BaseRetriever,
-) -> List[Document]:
-    all_results = []
-    print("---Đang thực hiện tìm kiếm cho các truy vấn con---")
-    for sub_q in queries:
-        print(f"  -> Đang tìm kiếm cho: '{sub_q}'")
-        try:
-            retrieved = retriever.invoke(sub_q)
-            all_results.extend(retrieved)
-        except Exception as e:
-            print(f"  Lỗi khi tìm kiếm cho '{sub_q}': {e}")
-            continue
-
-    unique_docs_dict = {doc.page_content: doc for doc in all_results}
-    unique_docs = list(unique_docs_dict.values())
-    print(f"---Tìm thấy tổng cộng {len(all_results)} tài liệu, sau khi lọc còn {len(unique_docs)} tài liệu duy nhất.---")
-    return unique_docs
-
-
-def transformed_search(
-    query: str,
-    transformation_type: Optional[str], # Sửa lại để chấp nhận None
-    model: genai.GenerativeModel,
-    retriever: Optional[BaseRetriever], # Sửa lại để chấp nhận None
-    use_reranking: bool = True,
-    rerank_top_n: int = 5
-) -> List: # Kiểu trả về có thể là List[Document] hoặc List[str]
-    """
-    Thực hiện biến đổi truy vấn. 
-    - Nếu có retriever, thực hiện tìm kiếm, rerank và trả về List[Document].
-    - Nếu retriever là None, chỉ trả về danh sách các câu hỏi đã biến đổi List[str].
-    """
-    # Bước 1: Biến đổi câu hỏi thành một hoặc nhiều truy vấn
-    queries_to_process = []
-    if transformation_type == "rewrite":
-        print("🔎 Bắt đầu biến đổi truy vấn: REWRITE")
-        transformed_query = rewrite_to_general_query(model, query)
-        print(f"  -> Câu hỏi khái quát hơn: {transformed_query}")
-        queries_to_process.append(transformed_query)
-    elif transformation_type == "step_back" or transformation_type == "decompose":
-        print(f"🔎 Bắt đầu biến đổi truy vấn: {transformation_type.upper()}")
-        queries_to_process = decompose_query(model, query)
-    else: # 'none' hoặc bất kỳ giá trị nào khác
-        print("🔎 Sử dụng truy vấn gốc (không biến đổi)")
-        queries_to_process.append(query)
-
-    # Bước 2: Kiểm tra chế độ hoạt động (Web Search hay Internal Search)
-    if retriever is None:
-        print("--- Chế độ chỉ biến đổi truy vấn (cho Web Search) ---")
-        return queries_to_process # Trả về danh sách các chuỗi câu hỏi
-
-    # --- Các bước dưới đây chỉ chạy khi có retriever (Internal Search) ---
-    
-    # Bước 3: Tìm kiếm với các truy vấn đã biến đổi
-    print("\n--- Bắt đầu tìm kiếm tài liệu nội bộ ---")
-    if len(queries_to_process) > 1:
-        retrieved_docs = _search_multiple_queries(queries_to_process, retriever)
-    else:
-        retrieved_docs = retriever.invoke(queries_to_process[0])
-    
-    print("\n--- DEBUG: TÀI LIỆU TRƯỚC KHI RERANK ---")
-    for i, doc in enumerate(retrieved_docs):
-        print(f"{i+1}. {doc.page_content[:100]}...")
-    print("-" * 20)
-
-    # Bước 4: Tùy chọn Rerank kết quả
-    if not use_reranking:
-        print("🚫 Bỏ qua bước Reranking.")
-        return retrieved_docs
-
-    if not retrieved_docs:
-        print("Không có tài liệu nào để rerank.")
-        return []
-
-    reranked_docs = rerank_documents_cross_encoder(
-        query=query, # Luôn sử dụng câu hỏi GỐC để rerank
-        documents=retrieved_docs,
-        top_n=rerank_top_n
-    )
-
-    print("\n--- DEBUG: TÀI LIỆU SAU KHI RERANK ---")
-    for i, doc in enumerate(reranked_docs):
-        score = doc.metadata.get('rerank_score', 'N/A')
-        print(f"{i+1}. Score: {score:.4f} - {doc.page_content[:100]}...")
-    print("-" * 20)
-
-    return reranked_docs
