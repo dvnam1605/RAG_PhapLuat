@@ -1,5 +1,7 @@
 # Vietnamese Legal Document RAG System
 
+Basic RAG in main and agentic RAG in branch agentic-bot
+
 This project implements a Retrieval-Augmented Generation (RAG) system for Vietnamese legal documents. The system uses local embeddings, vector stores, and query transformation techniques to provide accurate answers to legal questions based on a corpus of Vietnamese legal texts.
 
 ## Overview
