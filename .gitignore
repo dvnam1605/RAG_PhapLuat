@@ -11,3 +11,4 @@ transform_query.ipynb
 
 output_texts
 agentic_rag/vietnamese-bi-encoder/
+vector_store/faiss2/

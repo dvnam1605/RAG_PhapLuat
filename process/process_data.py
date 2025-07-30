@@ -4,7 +4,8 @@ from langchain_community.embeddings import GPT4AllEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain.document_loaders import DirectoryLoader, TextLoader
 from langchain.docstore.document import Document
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+# from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_experimental.text_splitter import SemanticChunker
 from langchain_huggingface import HuggingFaceEmbeddings
 
 # --- CẤU HÌNH ---
@@ -50,22 +51,13 @@ def build_vector_store():
     print("Tiền xử lý hoàn tất.")
 
     print("\nBắt đầu quá trình chia chunk theo ký tự...")
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=MAX_CHUNK_SIZE,
-        chunk_overlap=CHUNK_OVERLAP,
-        separators=["\n\n", "\n", ". ", "; ", ", ", " "], 
-        length_function=len
-    )
-    all_chunks = text_splitter.split_documents(documents)
-    
-    if not all_chunks:
-        print("Lỗi: Không tạo được chunk nào từ các tài liệu.")
-        return
-        
-    print(f"Hoàn tất!  Đã tạo tổng cộng {len(all_chunks)} chunks.")
-    
-    print("\nĐang khởi tạo mô hình embeddings...")
-
+    # text_splitter = RecursiveCharacterTextSplitter(
+    #     chunk_size=MAX_CHUNK_SIZE,
+    #     chunk_overlap=CHUNK_OVERLAP,
+    #     separators=["\n\n", "\n", ". ", "; ", ", ", " "], 
+    #     length_function=len
+    # )
+    # all_chunks = text_splitter.split_documents(documents)
     model_path= "models/vietnamese-bi-encoder"
     model_kwargs = {'device': 'cpu'} 
     encode_kwargs = {'normalize_embeddings': True}
@@ -79,6 +71,37 @@ def build_vector_store():
         model_kwargs=model_kwargs,
         encode_kwargs=encode_kwargs
 )
+    text_splitter = SemanticChunker(
+    embeddings=embeddings,
+    breakpoint_threshold_type="percentile",
+    breakpoint_threshold_amount=0.95
+)
+
+# Thực hiện chia chunk
+    # all_chunks = text_splitter.split_text(documents)
+    # if not all_chunks:
+    #     print("Lỗi: Không tạo được chunk nào từ các tài liệu.")
+    #     return
+    print("\nBắt đầu quá trình chia chunk theo ngữ nghĩa...")
+    all_chunks = []
+    for doc in documents:
+        # 1. Chia nội dung của MỘT tài liệu thành các chuỗi chunk
+        chunks_of_text = text_splitter.split_text(doc.page_content)
+        
+        # 2. Tạo các đối tượng Document mới từ các chuỗi chunk này
+        #    và giữ lại metadata của tài liệu gốc
+        for chunk_text in chunks_of_text:
+            new_doc = Document(page_content=chunk_text, metadata=doc.metadata.copy())
+            all_chunks.append(new_doc)
+            
+    if not all_chunks:
+        print("Lỗi: Không tạo được chunk nào từ các tài liệu.")
+        return
+        
+    print(f"Hoàn tất!  Đã tạo tổng cộng {len(all_chunks)} chunks.")
+    
+    print("\nĐang khởi tạo mô hình embeddings...")
+
     
     print("Đang tạo vector store từ các chunks (quá trình này có thể mất vài phút)...")
     vector_store = FAISS.from_documents(

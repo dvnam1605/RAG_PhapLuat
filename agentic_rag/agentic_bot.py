@@ -38,7 +38,7 @@ try:
     print("Đang tải Embedding Model và Vector Store...")
     model_path = os.path.join(os.path.dirname(__file__), "vietnamese-bi-encoder")
     embeddings = HuggingFaceEmbeddings(model_name=model_path, model_kwargs={'device': 'cpu'}, encode_kwargs={'normalize_embeddings': True})
-    VECTOR_STORE_PATH = "vector_store/faiss"
+    VECTOR_STORE_PATH = "vector_store/faiss2"
     vector_store = FAISS.load_local(VECTOR_STORE_PATH, embeddings, allow_dangerous_deserialization=True)
     retriever = vector_store.as_retriever(search_kwargs={'k': 20})
     print("✅ Vector Store đã sẵn sàng.")
